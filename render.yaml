@@ -1,0 +1,32 @@
+# Render Blueprint — creates the Orderflow web service on Render's free plan.
+# In Render: New → Blueprint → pick this repo. You'll be asked for the
+# values marked "sync: false" (they are never stored in this repo).
+services:
+  - type: web
+    name: orderflow
+    runtime: node
+    plan: free
+    region: frankfurt          # closest Render region to Syria and to the Nextcloud server
+    buildCommand: npm ci --omit=dev
+    startCommand: node server.js
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: DB_FILENAME
+        value: Order_App.db
+      - key: SESSION_SECRET      # signs login cookies; generated once by Render
+        generateValue: true
+      - key: NC_HOST             # Nextcloud host, e.g. nestle.thegood.cloud
+        sync: false
+      - key: NC_TOKEN            # Nextcloud public-share token
+        sync: false
+      - key: NC_PASSWORD         # Nextcloud public-share password
+        sync: false
+      - key: CS_PASSWORD         # new password for the "cs" account (8+ chars)
+        sync: false
+      - key: FINANCE_PASSWORD    # new password for the "finance" account (8+ chars)
+        sync: false
