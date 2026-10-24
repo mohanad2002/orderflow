@@ -1,0 +1,42 @@
+# Render Blueprint — creates the Orderflow web service on Render's free plan.
+# In Render: New → Blueprint → pick this repo. You'll be asked for the
+# values marked "sync: false" (they are never stored in this repo).
+services:
+  - type: web
+    name: orderflow
+    runtime: node
+    plan: free
+    region: frankfurt          # closest Render region to Syria
+    buildCommand: npm ci --omit=dev
+    startCommand: node server.js
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: SESSION_SECRET      # signs login cookies; generated once by Render
+        generateValue: true
+
+      # ── Database (Turso) ──
+      - key: TURSO_DATABASE_URL  # libsql://<database>-<account>.turso.io
+        sync: false
+      - key: TURSO_AUTH_TOKEN    # database token from the Turso dashboard
+        sync: false
+
+      # ── New passwords for the two logins (8+ characters) ──
+      - key: CS_PASSWORD
+        sync: false
+      - key: FINANCE_PASSWORD
+        sync: false
+
+      # ── ONE-TIME data copy from the old Nextcloud share ──
+      # Used only on the very first start, while the Turso database is empty.
+      # Delete these three from Render's Environment tab afterwards.
+      - key: NC_HOST             # e.g. nestle.thegood.cloud
+        sync: false
+      - key: NC_TOKEN
+        sync: false
+      - key: NC_PASSWORD
+        sync: false
