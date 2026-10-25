@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sign In — Order Management</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<style>
+  body { display:flex; align-items:center; justify-content:center; min-height:100vh; padding:24px; }
+  .login-card {
+    width:100%; max-width:420px;
+    background: var(--surface);
+    border:1px solid var(--border);
+    border-radius:18px;
+    padding:36px 32px;
+    box-shadow: 0 30px 80px -20px rgba(0,0,0,.4);
+    position:relative;
+  }
+  .brand {
+    display:flex; align-items:center; gap:10px;
+    margin-bottom:28px;
+  }
+  .brand-mark {
+    width:36px; height:36px; border-radius:10px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    display:flex; align-items:center; justify-content:center;
+    color:#fff; font-weight:700; font-size:18px;
+    box-shadow: 0 6px 20px -4px var(--accent-shadow);
+  }
+  .brand-text { font-size:13px; color:var(--muted); letter-spacing:.5px; text-transform:uppercase; font-weight:600;}
+  .brand-text strong { color:var(--text); display:block; font-size:18px; letter-spacing:-.3px; text-transform:none; }
+  .version-tag {
+    display:inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: .4px;
+    font-family: var(--mono);
+    vertical-align: middle;
+  }
+  h1 { font-size:24px; font-weight:700; margin-bottom:6px; letter-spacing:-.5px; }
+  .subtitle { color:var(--muted); font-size:14px; margin-bottom:28px; }
+  .err {
+    background: rgba(239, 68, 68, .12);
+    border:1px solid rgba(239, 68, 68, .35);
+    color: var(--red);
+    border-radius:10px;
+    padding:10px 14px;
+    font-size:13px;
+    margin-bottom:16px;
+    display:none;
+  }
+  .err.show { display:block; }
+  .demo-hint {
+    margin-top:22px;
+    padding:14px;
+    background: var(--surface-2);
+    border:1px dashed var(--border);
+    border-radius:10px;
+    font-size:12px;
+    color:var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+    line-height:1.7;
+  }
+  .demo-hint strong { color:var(--text); }
+  .theme-toggle-wrap { position:absolute; top:20px; right:20px; }
+</style>
+</head>
+<body>
+  <div class="login-card">
+    <div class="theme-toggle-wrap">
+      <div class="theme-switch" onclick="toggleTheme()" title="Toggle theme" role="switch" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleTheme();}">
+        <div class="switch-track">
+          <svg class="track-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+          <svg class="track-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </div>
+        <div class="switch-knob">
+          <svg class="knob-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+          <svg class="knob-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </div>
+      </div>
+    </div>
+
+    <div class="brand">
+      <div class="brand-mark">O</div>
+      <div class="brand-text"><strong>Orderflow</strong>Order Management<span id="app-version" class="version-tag"></span></div>
+    </div>
+
+    <h1>Welcome back</h1>
+    <p class="subtitle">Sign in to continue to your dashboard</p>
+
+    <div class="err" id="err"></div>
+
+    <div class="form-field">
+      <label class="form-label">Username</label>
+      <input type="text" id="u" autocomplete="username" placeholder="Username" onkeyup="if(event.key==='Enter') document.getElementById('p').focus()">
+    </div>
+    <div class="form-field">
+      <label class="form-label">Password</label>
+      <input type="password" id="p" autocomplete="current-password" placeholder="••••••" onkeyup="if(event.key==='Enter') doLogin()">
+    </div>
+
+    <button class="btn btn-primary" id="signin-btn" style="width:100%; margin-top:8px;" onclick="doLogin()">Sign in</button>
+  </div>
+
+<script src="/theme.js"></script>
+<script>
+async function doLogin() {
+  const username = document.getElementById('u').value.trim();
+  const password = document.getElementById('p').value;
+  const err = document.getElementById('err');
+  err.classList.remove('show');
+  if (!username || !password) { err.textContent='Enter both fields'; err.classList.add('show'); return; }
+  try {
+    const r = await fetch('/api/login', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      credentials:'include',
+      body: JSON.stringify({ username, password })
+    });
+    const j = await r.json();
+    if (!j.success) { err.textContent = j.error || 'Login failed'; err.classList.add('show'); return; }
+    window.location.href = '/app.html';
+  } catch (e) {
+    err.textContent = 'Network error: ' + e.message;
+    err.classList.add('show');
+  }
+}
+// Auto-redirect if already logged in
+fetch('/api/me', { credentials:'include' }).then(r => r.json()).then(j => {
+  if (j.version) {
+    const el = document.getElementById('app-version');
+    if (el) el.textContent = 'v' + j.version;
+  }
+  if (j.success) window.location.href = '/app.html';
+});
+</script>
+</body>
+</html>
