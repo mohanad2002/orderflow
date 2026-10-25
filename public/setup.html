@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Set Up Database — Orderflow</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<style>
+  body { display:flex; align-items:center; justify-content:center; min-height:100vh; padding:24px; }
+  .card-setup {
+    width:100%; max-width:480px;
+    background: var(--surface);
+    border:1px solid var(--border);
+    border-radius:18px;
+    padding:36px 32px;
+    box-shadow: 0 30px 80px -20px rgba(0,0,0,.4);
+  }
+  .brand { display:flex; align-items:center; gap:10px; margin-bottom:24px; }
+  .brand-mark {
+    width:36px; height:36px; border-radius:10px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    display:flex; align-items:center; justify-content:center;
+    color:#fff; font-weight:700; font-size:18px;
+    box-shadow: 0 6px 20px -4px var(--accent-shadow);
+  }
+  .brand-text { font-size:13px; color:var(--muted); letter-spacing:.5px; text-transform:uppercase; font-weight:600; }
+  .brand-text strong { color:var(--text); display:block; font-size:18px; letter-spacing:-.3px; text-transform:none; }
+  h1 { font-size:22px; font-weight:700; margin-bottom:8px; letter-spacing:-.4px; }
+  .subtitle { color:var(--muted); font-size:14px; line-height:1.55; margin-bottom:22px; }
+  .drop {
+    display:block; border:1.5px dashed var(--border); border-radius:12px;
+    padding:22px 16px; text-align:center; cursor:pointer;
+    background: var(--surface-2); color: var(--muted); font-size:13.5px;
+    transition: border-color .15s, color .15s;
+  }
+  .drop:hover, .drop.has-file { border-color: var(--accent); color: var(--text); }
+  .drop strong { color: var(--text); }
+  .drop input { display:none; }
+  .hint { font-size:12px; color:var(--muted); margin-top:6px; line-height:1.5; }
+  .msg { border-radius:10px; padding:10px 14px; font-size:13px; margin-top:16px; display:none; line-height:1.5; }
+  .msg.show { display:block; }
+  .msg.err  { background: rgba(239,68,68,.12); border:1px solid rgba(239,68,68,.35); color: var(--red); }
+  .msg.ok   { background: rgba(16,185,129,.10); border:1px solid rgba(16,185,129,.35); color: var(--green); }
+  .counts { display:grid; grid-template-columns: 1fr auto; gap:4px 16px; margin-top:10px; font-size:13px; color: var(--text); }
+  .counts span:nth-child(even) { font-family: var(--mono, 'JetBrains Mono', monospace); text-align:right; }
+</style>
+</head>
+<body>
+  <div class="card-setup">
+    <div class="brand">
+      <div class="brand-mark">O</div>
+      <div class="brand-text"><strong>Orderflow</strong>First-time setup</div>
+    </div>
+
+    <div id="form-view">
+      <h1>Upload your data</h1>
+      <p class="subtitle">The new database is empty. Upload your existing <strong>Order_App.db</strong> once, and all customers, orders, balances, users and history are copied in. This page disappears afterwards.</p>
+
+      <label class="drop" id="drop">
+        <input type="file" id="file" accept=".db,.sqlite,.sqlite3,application/octet-stream">
+        <div id="drop-text"><strong>Choose Order_App.db</strong><br>or drag it here</div>
+      </label>
+      <div class="hint">Use the newest copy you have, normally the one in the old app's folder on the PC that last ran it. Check its "Date modified".</div>
+
+      <div class="form-field" style="margin-top:18px;">
+        <label class="form-label">Setup key</label>
+        <input type="password" id="key" autocomplete="off" placeholder="••••••••">
+        <div class="hint">The <strong>FINANCE_PASSWORD</strong> (or CS_PASSWORD) you entered in the hosting settings.</div>
+      </div>
+
+      <button class="btn btn-primary" id="go" style="width:100%; margin-top:8px;">Import data</button>
+      <div class="msg" id="msg"></div>
+    </div>
+
+    <div id="done-view" style="display:none;">
+      <h1>Data imported ✓</h1>
+      <p class="subtitle">Everything was copied into the new database and checked row by row.</p>
+      <div class="counts" id="counts"></div>
+      <a class="btn btn-primary" href="/index.html" style="width:100%; margin-top:22px; text-decoration:none; justify-content:center;">Go to sign in</a>
+    </div>
+  </div>
+
+<script src="/theme.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+let chosen = null;
+
+function pick(f) {
+  chosen = f || null;
+  $('drop').classList.toggle('has-file', !!chosen);
+  $('drop-text').innerHTML = chosen
+    ? `<strong>${chosen.name.replace(/[<>&]/g, '')}</strong><br>${(chosen.size / 1024).toFixed(0)} KB · click to change`
+    : '<strong>Choose Order_App.db</strong><br>or drag it here';
+}
+function show(text, kind) { const m = $('msg'); m.textContent = text; m.className = 'msg show ' + kind; }
+
+$('file').addEventListener('change', e => pick(e.target.files[0]));
+['dragover', 'dragenter'].forEach(ev => $('drop').addEventListener(ev, e => { e.preventDefault(); $('drop').classList.add('has-file'); }));
+$('drop').addEventListener('dragleave', () => { if (!chosen) $('drop').classList.remove('has-file'); });
+$('drop').addEventListener('drop', e => { e.preventDefault(); pick(e.dataTransfer.files[0]); });
+$('key').addEventListener('keyup', e => { if (e.key === 'Enter') $('go').click(); });
+
+$('go').addEventListener('click', async () => {
+  if (!chosen) return show('Choose your Order_App.db file first.', 'err');
+  if (!$('key').value) return show('Enter the setup key.', 'err');
+  $('go').disabled = true; $('go').textContent = 'Importing… (a few seconds)';
+  $('msg').className = 'msg';
+  try {
+    const fd = new FormData();
+    fd.append('key', $('key').value);
+    fd.append('file', chosen);
+    const r = await fetch('/api/setup/import', { method: 'POST', body: fd });
+    let j; try { j = await r.json(); } catch (e) { throw new Error(`Server is starting up or unavailable (HTTP ${r.status}). Try again in a moment.`); }
+    if (!j.success) throw new Error(j.error || 'Import failed');
+    $('counts').innerHTML = Object.entries(j.counts)
+      .map(([t, n]) => `<span>${t.replace(/_/g, ' ')}</span><span>${Number(n).toLocaleString()}</span>`).join('');
+    $('form-view').style.display = 'none';
+    $('done-view').style.display = '';
+  } catch (e) {
+    show(e.message, 'err');
+    $('go').disabled = false; $('go').textContent = 'Import data';
+  }
+});
+
+// Only meaningful while the database is empty
+fetch('/api/setup/status', { cache: 'no-store' }).then(r => r.json()).then(j => {
+  if (!j.setupMode && $('done-view').style.display === 'none') window.location.href = '/index.html';
+}).catch(() => {});
+</script>
+</body>
+</html>

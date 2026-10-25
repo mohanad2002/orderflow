@@ -6,12 +6,13 @@ Build version is shown in the top-left of the app (next to "Order Management"). 
 
 ## v3.0.0  (Database moved off Nextcloud → Turso)
 - **New database:** data now lives in a hosted SQLite database on [Turso](https://turso.tech) (free plan). Nextcloud is no longer used.
-- **One-time automatic data copy:** on the first start with an empty Turso database, the server downloads the old `Order_App.db` from Nextcloud (or `IMPORT_DB_FILE`) and copies every table, row and index in a single transaction, then verifies the row counts. It never runs again once the database has data.
+- **First-time setup page:** while the Turso database is empty, opening the app shows an **Upload your data** page. Upload your local `Order_App.db` with the setup key (`FINANCE_PASSWORD` or `CS_PASSWORD`), and every table, row and index is copied in one transaction and verified. Wrong files, wrong keys and non-Orderflow databases are refused, and nothing is saved on failure. The page locks itself once data exists.
+- Optional server-side alternatives for the same one-time copy: `IMPORT_DB_FILE` or `NC_HOST`/`NC_TOKEN`/`NC_PASSWORD`.
 - **Safer writes:** every write is one database transaction (all-or-nothing). Bulk operations (order/customer/balance imports, mail flags, deletes) are sent in batches.
 - **Database backup button** (sidebar, database icon): downloads a complete `Order_App_backup_<date>.db` that opens in DB Browser for SQLite and can be re-imported with `IMPORT_DB_FILE`.
 - Sidebar status shows "Database · N ms" (was "Nextcloud").
 - While the server is still starting (first-time import, migrations), data APIs answer "starting up" instead of touching a half-ready database.
-- Settings: `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` replace the Nextcloud settings. `NC_HOST` / `NC_TOKEN` / `NC_PASSWORD` are now only for the one-time copy. `TURSO_DATABASE_URL=file:…` runs fully offline on a local file.
+- Settings: `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` replace the Nextcloud settings. `TURSO_DATABASE_URL=file:…` runs fully offline on a local file.
 - Dependencies: added `@libsql/client`. `sql.js` is kept only for the import/backup file format.
 
 ## v2.11.0  (Cloud hosting on Render)

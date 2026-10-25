@@ -131,6 +131,11 @@ async function doLogin() {
     err.classList.add('show');
   }
 }
+// First-time setup: the database is still empty → go to the upload page
+fetch('/api/setup/status', { cache:'no-store' }).then(r => r.json()).then(j => {
+  if (j.setupMode) window.location.href = '/setup.html';
+}).catch(() => {});
+
 // Auto-redirect if already logged in
 fetch('/api/me', { credentials:'include' }).then(r => r.json()).then(j => {
   if (j.version) {

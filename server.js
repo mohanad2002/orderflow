@@ -358,11 +358,13 @@ async function importSqliteFile(buf, label) {
   }
 }
 
+// Returns 'ready' when the database has data, or 'awaiting-upload' when it
+// is empty and nothing was configured to import (→ browser setup page).
 async function prepareDatabase() {
   if (!(await databaseIsEmpty())) {
     if (NC_HOST || IMPORT_DB_FILE)
       console.log('  Database already has data — import settings (NC_* / IMPORT_DB_FILE) are ignored and can be removed.');
-    return;
+    return 'ready';
   }
   console.log('  Database is empty.');
   let buf = null, label = '';
@@ -375,21 +377,62 @@ async function prepareDatabase() {
     buf = await downloadFromNextcloud();
   }
   if (buf) {
-    const counts = await importSqliteFile(buf, label);
-    await withWriteDB(db => auditIn(db, 'system', 'IMPORT_DATABASE',
-      `from ${label}: ` + Object.entries(counts).map(([k, v]) => `${k}=${v}`).join(' ')),
-      { type: 'IMPORT_DATABASE', who: 'system' });
-    return;
+    await importAndLog(buf, label, 'system');
+    return 'ready';
   }
   if (INIT_EMPTY_DB) {
     console.log('  Creating a fresh, empty database (INIT_EMPTY_DB) ...');
     await withWriteDB(async db => {
       for (const sql of SCHEMA_SQL) await db.run(sql);
     });
-    return;
+    return 'ready';
   }
-  throw new Error('The database is empty and there is nothing to import. Set NC_HOST, NC_TOKEN and NC_PASSWORD ' +
-                  '(one-time copy from Nextcloud), or IMPORT_DB_FILE, or INIT_EMPTY_DB=yes for a brand-new start.');
+  return 'awaiting-upload';
+}
+
+async function importAndLog(buf, label, who) {
+  const counts = await importSqliteFile(buf, label);
+  await withWriteDB(db => auditIn(db, who, 'IMPORT_DATABASE',
+    `from ${label}: ` + Object.entries(counts).map(([k, v]) => `${k}=${v}`).join(' ')),
+    { type: 'IMPORT_DATABASE', who });
+  return counts;
+}
+
+// ── Startup sequence (also re-run right after a browser upload) ──────────
+// Connect, import old data if configured, apply migrations, check users.
+// If anything fails (e.g. the database is briefly unreachable), retry
+// instead of running half-initialised.
+let setupMode = false;      // true = empty database, waiting for an upload
+let _startupTimer = null;
+
+async function runStartup(attempt = 1) {
+  clearTimeout(_startupTimer);
+  console.log(`  Connecting to the database...${attempt > 1 ? ` (attempt ${attempt})` : ''}`);
+  try {
+    await dbClient.execute('SELECT 1');
+    const state = await prepareDatabase();
+    if (state === 'awaiting-upload') {
+      setupMode = true;
+      console.log('  The database is empty. Open the app in a browser to upload your Order_App.db');
+      console.log('  (setup key = the FINANCE_PASSWORD or CS_PASSWORD you configured).\n');
+      return false;
+    }
+    setupMode = false;
+    const rows = await read('SELECT COUNT(*) AS c FROM Users');
+    console.log(`  Connected — ${rows[0].c} user(s) currently in the database.`);
+    await runMigrations();
+    await ensureDefaultUsers();
+    await replaceDefaultPasswords();
+    dbReady = true;
+    console.log('  Ready.\n');
+    return true;
+  } catch (e) {
+    console.error('  Startup FAILED:', e.message);
+    console.error('  → Check TURSO_DATABASE_URL and TURSO_AUTH_TOKEN.');
+    console.error('  Retrying in 30 seconds...\n');
+    _startupTimer = setTimeout(() => runStartup(attempt + 1), 30000);
+    return false;
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -448,8 +491,81 @@ app.use('/drafts', requireAuth, express.static(DRAFTS_DIR));
 // Until startup (first-time import, migrations) has finished, data APIs
 // answer "starting up" instead of touching a half-prepared database.
 app.use('/api', (req, res, next) => {
-  if (dbReady || ['/health', '/app-info', '/me'].includes(req.path)) return next();
+  if (dbReady || ['/health', '/app-info', '/me', '/setup/status', '/setup/import'].includes(req.path)) return next();
+  if (setupMode)
+    return res.status(503).json({ success: false, setupMode: true, error: 'The database is empty — open /setup.html to upload your data first.' });
   res.status(503).json({ success: false, error: 'The app is starting up — please try again in a few seconds.' });
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// FIRST-TIME SETUP — upload an existing Order_App.db from the browser
+// ════════════════════════════════════════════════════════════════════════
+// Only available while the hosted database is completely empty. Protected
+// by a setup key = the FINANCE_PASSWORD or CS_PASSWORD set on the host.
+let _setupBusy = false;
+
+function sameSecret(a, b) {
+  const ha = crypto.createHash('sha256').update(String(a)).digest();
+  const hb = crypto.createHash('sha256').update(String(b)).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
+
+app.get('/api/setup/status', (req, res) => {
+  res.json({ setupMode, ready: dbReady, version: APP_VERSION });
+});
+
+app.post('/api/setup/import', upload.single('file'), async (req, res) => {
+  const cleanup = () => { if (req.file) fs.unlink(req.file.path, () => {}); };
+  try {
+    if (!setupMode) {
+      cleanup();
+      return res.status(409).json({ success: false, error: 'The database is already set up — nothing to import.' });
+    }
+    const ip = clientIp(req);
+    if (loginBlocked(ip, '__setup__')) {
+      cleanup();
+      return res.status(429).json({ success: false, error: 'Too many wrong setup keys. Try again in 15 minutes.' });
+    }
+    const keys = [process.env.FINANCE_PASSWORD, process.env.CS_PASSWORD].filter(k => k && k.length >= 8);
+    if (!keys.length) {
+      cleanup();
+      return res.status(400).json({ success: false, error: 'No setup key configured. Set FINANCE_PASSWORD (8+ characters) in the hosting settings, then try again.' });
+    }
+    const key = String((req.body && req.body.key) || '');
+    if (!keys.some(k => sameSecret(k, key))) {
+      noteLoginFail(ip, '__setup__');
+      cleanup();
+      return res.status(403).json({ success: false, error: 'Wrong setup key. Use the FINANCE_PASSWORD (or CS_PASSWORD) you set in the hosting settings.' });
+    }
+    if (!req.file) return res.status(400).json({ success: false, error: 'Choose your Order_App.db file first.' });
+
+    const buf = fs.readFileSync(req.file.path);
+    const original = req.file.originalname || 'Order_App.db';
+    cleanup();
+    if (buf.length < 100 || buf.subarray(0, 16).toString('latin1') !== 'SQLite format 3\u0000')
+      return res.status(400).json({ success: false, error: `"${original}" is not a SQLite database file. Choose Order_App.db.` });
+
+    if (_setupBusy) return res.status(409).json({ success: false, error: 'An import is already running — please wait.' });
+    _setupBusy = true;
+    try {
+      if (!(await databaseIsEmpty())) {
+        setupMode = false;
+        runStartup();
+        return res.status(409).json({ success: false, error: 'The database already has data — nothing to import.' });
+      }
+      const label = `uploaded file "${original}"`;
+      console.log(`  Setup: importing ${label} (${buf.length} bytes) from ${ip}`);
+      const counts = await importAndLog(buf, label, 'setup');
+      const ok = await runStartup();
+      res.json({ success: true, counts, ready: ok });
+    } finally {
+      _setupBusy = false;
+    }
+  } catch (e) {
+    cleanup();
+    console.error('  Setup import failed:', e.message);
+    res.status(500).json({ success: false, error: 'Import failed: ' + e.message + ' — nothing was saved; you can try again.' });
+  }
 });
 
 // ── Login brute-force protection (in memory) ────────────────────────────
@@ -1864,28 +1980,6 @@ app.use((err, req, res, next) => {
     }
     console.log(`  Database: ${DB_LABEL}\n`);
 
-    // Startup: connect, import old data if the database is still empty,
-    // apply migrations, check users. If anything fails (e.g. the database
-    // is briefly unreachable), retry instead of running half-initialised.
-    const startup = async (attempt = 1) => {
-      console.log(`  Connecting to the database...${attempt > 1 ? ` (attempt ${attempt})` : ''}`);
-      try {
-        await dbClient.execute('SELECT 1');
-        await prepareDatabase();
-        const rows = await read('SELECT COUNT(*) AS c FROM Users');
-        console.log(`  Connected — ${rows[0].c} user(s) currently in the database.`);
-        await runMigrations();
-        await ensureDefaultUsers();
-        await replaceDefaultPasswords();
-        dbReady = true;
-        console.log('  Ready.\n');
-      } catch (e) {
-        console.error('  Startup FAILED:', e.message);
-        console.error('  → Check TURSO_DATABASE_URL and TURSO_AUTH_TOKEN.');
-        console.error('  Retrying in 30 seconds...\n');
-        setTimeout(() => startup(attempt + 1), 30000);
-      }
-    };
-    startup();
+    runStartup();
   });
 })();

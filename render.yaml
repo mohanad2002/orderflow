@@ -26,17 +26,9 @@ services:
         sync: false
 
       # ── New passwords for the two logins (8+ characters) ──
+      # FINANCE_PASSWORD is also the "setup key" for the one-time upload of
+      # your existing Order_App.db on the app's first-time setup page.
       - key: CS_PASSWORD
         sync: false
       - key: FINANCE_PASSWORD
-        sync: false
-
-      # ── ONE-TIME data copy from the old Nextcloud share ──
-      # Used only on the very first start, while the Turso database is empty.
-      # Delete these three from Render's Environment tab afterwards.
-      - key: NC_HOST             # e.g. nestle.thegood.cloud
-        sync: false
-      - key: NC_TOKEN
-        sync: false
-      - key: NC_PASSWORD
         sync: false

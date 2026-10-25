@@ -7,7 +7,7 @@ Web application for managing customer orders with **Customer Service** and **Fin
 | The app (this code) | [Render](https://render.com), free web service | free |
 | The database | [Turso](https://turso.tech), hosted SQLite | free (5 GB, no card) |
 
-**Nextcloud is no longer used.** It is read only once, on the very first start, to copy your existing data into Turso.
+**Nextcloud is not used.** Your existing data is moved in once, by uploading your local `Order_App.db` on the app's first-time setup page.
 
 ---
 
@@ -20,11 +20,11 @@ Web application for managing customer orders with **Customer Service** and **Fin
    - copy its **URL**, which starts with `libsql://`
    - **create a token** with read & write access and no expiry, and copy it.
 
-### 2. Stop the old app
-Close every running copy of the old local app (`start.bat` / `node server.js`). Otherwise someone could change Nextcloud data after it has been copied.
+### 2. Find your newest `Order_App.db`
+The old app refreshed its local `Order_App.db` every time it ran, so the newest copy is normally in the old app's folder on the PC that ran it last. Check the file's **Date modified**, and close the old app before you take the copy.
 
 ### 3. Put this folder on GitHub
-Upload the folder's contents to your repository, including the `public` folder. `node_modules`, `.env` and `*.db` are deliberately excluded.
+Upload the folder's contents to your repository, including the `public` folder. `node_modules`, `.env` and `*.db` are deliberately excluded. **Never put `Order_App.db` in the repository**, because it contains customer data.
 
 ### 4. Deploy on Render
 1. Sign in at <https://dashboard.render.com> with GitHub.
@@ -35,29 +35,24 @@ Upload the folder's contents to your repository, including the `public` folder. 
    | `TURSO_DATABASE_URL` | the `libsql://…` URL from step 1 |
    | `TURSO_AUTH_TOKEN` | the token from step 1 |
    | `CS_PASSWORD` | a **new** password for the `cs` login (8+ characters) |
-   | `FINANCE_PASSWORD` | a **new** password for the `finance` login (8+ characters) |
-   | `NC_HOST` | `nestle.thegood.cloud`, for the one-time data copy |
-   | `NC_TOKEN` / `NC_PASSWORD` | the old Nextcloud share token and password, for the one-time data copy |
+   | `FINANCE_PASSWORD` | a **new** password for the `finance` login (8+ characters). It is also the **setup key** in step 5 |
 
 3. Click **Apply**. The first build takes about 2–3 minutes.
-4. In the service's **Logs**, look for:
-   ```
-   Import complete and verified:
-      Users                2 row(s)
-      Orders               … row(s)
-      ...
-   Ready.
-   ```
-5. Open the app address shown at the top, e.g. `https://orderflow.onrender.com`, and sign in with `cs` or `finance` and the new password.
 
-### 5. Cut the cord to Nextcloud
-In Render → your service → **Environment**, **delete `NC_HOST`, `NC_TOKEN` and `NC_PASSWORD`**. The import never runs again once the database has data, but there's no reason to keep them. From now on, Nextcloud plays no part. Keep the old `Order_App.db` file somewhere safe as an archive.
+### 5. Upload your data (first visit only)
+1. Open the app address shown at the top of the Render page, e.g. `https://orderflow.onrender.com`.
+2. Because the new database is empty, the app shows the **Upload your data** page. Choose your `Order_App.db`, enter the setup key (your `FINANCE_PASSWORD`) and click **Import data**.
+3. The app copies every table and row, checks them, and shows the row counts. Click **Go to sign in**.
+
+The upload page only works while the database is completely empty, so once your data is in, it can't be used again.
+
+*(Alternatives, if ever needed: set `IMPORT_DB_FILE` to a file on the server, or `NC_HOST` / `NC_TOKEN` / `NC_PASSWORD` to copy from a Nextcloud share. Both are used only while the database is empty.)*
 
 ---
 
 ## Everyday notes
 
-**Backups.** Click the **database icon** at the bottom of the sidebar to download a full copy as `Order_App_backup_<date>.db`. It's the same kind of file as before and opens in [DB Browser for SQLite](https://sqlitebrowser.org/). Turso also keeps 1 day of point-in-time restore on the free plan.
+**Backups.** Click the **database icon** at the bottom of the sidebar to download a full copy as `Order_App_backup_<date>.db`. It's the same kind of file as before and opens in [DB Browser for SQLite](https://sqlitebrowser.org/). Turso also keeps 1 day of point-in-time restore on the free plan. To restore a backup, create a new empty Turso database, point `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` at it, and upload the backup on the setup page.
 
 **Passwords.** On the hosted app, the factory passwords (`cs123`, `fin123`) never work. On first start, any account still using one is switched to `CS_PASSWORD` / `FINANCE_PASSWORD`. Passwords users have changed in the app (lock icon) are left alone.
 
@@ -98,7 +93,7 @@ When run locally on Windows, the email buttons still try to open Outlook directl
 ### Data access (technical)
 - Reads are direct queries against Turso (libSQL, the SQLite dialect), so the SQL is unchanged from the old app.
 - Each write runs in **one database transaction**: it fully commits or fully rolls back. Writes are queued one at a time, and bulk operations (imports, mail flags) are sent in batches.
-- First start: if the database is empty, the server copies every table, row and index from the Nextcloud file (or `IMPORT_DB_FILE`) in a single transaction, then verifies the row counts.
+- First start: if the database is empty, the app shows a setup page where the existing `Order_App.db` is uploaded (protected by the setup key). Every table, row and index is copied in a single transaction, then verified. A failed upload saves nothing.
 - Browsers poll `/api/version` every 10 s and refresh when another user changes data.
 
 ---
@@ -113,6 +108,7 @@ When run locally on Windows, the email buttons still try to open Outlook directl
 ├─ start.bat          ← Windows launcher (local)
 └─ public/
    ├─ index.html      ← login page
+   ├─ setup.html      ← first-time data upload page
    ├─ app.html        ← main app shell
    ├─ app.js          ← frontend logic
    ├─ styles.css      ← dark + light theme
