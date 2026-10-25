@@ -61,6 +61,7 @@ function monthFilterHtml(id) {
     me = r.user;
     renderUser();
     showRoleNav();
+    refreshOutlookButtons();
     showVersion(r.version);
     injectMonthDropdowns();
     loadDashboard();
@@ -555,10 +556,64 @@ async function deleteSelectedOrders() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// EMAIL DRAFT — download flow (used when the server can't open Outlook,
-// e.g. on the cloud host). The .eml opens in Outlook as a new draft with
-// the Excel already attached, because it carries the "X-Unsent: 1" header.
+// EMAIL DRAFTS
+// Two ways to get the email into Outlook from the hosted app:
+//  1) Outlook helper (set up once per PC): the browser opens an
+//     "orderflow-mail:" link; the helper creates the email directly in
+//     Outlook with the Excel attached. Nothing is saved to Downloads.
+//  2) Fallback: download an .eml draft ("X-Unsent: 1") that opens in Outlook.
 // ════════════════════════════════════════════════════════════════════════
+const OL_KEY = 'orderflow-outlook-helper';
+
+function outlookHelperOn() {
+  try { return localStorage.getItem(OL_KEY) === '1'; } catch (e) { return false; }
+}
+function refreshOutlookButtons() {
+  const on = outlookHelperOn();
+  document.querySelectorAll('.ol-status-btn').forEach(b => {
+    b.classList.toggle('on', on);
+    const t = b.querySelector('.ol-status-text');
+    if (t) t.textContent = on ? 'Outlook: on' : 'Outlook: off';
+    b.title = on ? 'Emails open straight in Outlook on this PC (click to change)'
+                 : 'Set up: open emails straight in Outlook on this PC';
+  });
+}
+function outlookSnippet() {
+  const o = location.origin;
+  return [
+    '$d="$env:LOCALAPPDATA\\Orderflow"; New-Item -ItemType Directory -Force -Path $d | Out-Null',
+    '[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12',
+    "Invoke-WebRequest -UseBasicParsing -Uri '" + o + "/outlook-helper/OrderflowOutlook.ps1' -OutFile \"$d\\OrderflowOutlook.ps1\"",
+    '$q=[char]34; $c=$q+"$env:SystemRoot\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"+$q+\' -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \'+$q+"$d\\OrderflowOutlook.ps1"+$q+\' \'+$q+\'%1\'+$q',
+    "$k='HKCU:\\Software\\Classes\\orderflow-mail'; New-Item -Path $k -Value 'URL:Orderflow Outlook email' -Force | Out-Null",
+    "New-ItemProperty -Path $k -Name 'URL Protocol' -Value '' -PropertyType String -Force | Out-Null",
+    'New-Item -Path "$k\\shell" -Force | Out-Null; New-Item -Path "$k\\shell\\open" -Force | Out-Null',
+    'New-Item -Path "$k\\shell\\open\\command" -Value $c -Force | Out-Null; \'Done - the Outlook button is installed.\''
+  ].join('; ');
+}
+function openOutlookSetup() {
+  document.getElementById('ol-snippet').value = outlookSnippet();
+  document.getElementById('ol-off-btn').style.display = outlookHelperOn() ? '' : 'none';
+  document.getElementById('ol-modal').classList.add('open');
+}
+function copyOutlookSnippet() {
+  const t = document.getElementById('ol-snippet');
+  t.select();
+  (navigator.clipboard ? navigator.clipboard.writeText(t.value) : Promise.reject())
+    .then(() => toast('Copied — paste it into Windows PowerShell', 'success'))
+    .catch(() => { try { document.execCommand('copy'); toast('Copied', 'success'); } catch (e) {} });
+}
+function setOutlookHelper(on) {
+  try { on ? localStorage.setItem(OL_KEY, '1') : localStorage.removeItem(OL_KEY); } catch (e) {}
+  document.getElementById('ol-modal').classList.remove('open');
+  refreshOutlookButtons();
+  toast(on ? 'Emails will now open straight in Outlook on this PC'
+           : 'Turned off — emails will download as draft files', 'success');
+}
+function outlookLink(token) {
+  return 'orderflow-mail://open/?url=' + encodeURIComponent(location.origin + '/api/mail-draft/' + token);
+}
+
 function triggerDownload(url) {
   const a = document.createElement('a');
   a.href = url; a.download = '';
@@ -566,22 +621,56 @@ function triggerDownload(url) {
   document.body.appendChild(a); a.click(); a.remove();
 }
 
-function renderDraftDownload(out, j, what) {
-  const failed = !!j.outlookError;   // a real Outlook failure (local Windows run)
-  const color  = failed ? 'var(--amber)' : 'var(--green)';
-  const title  = failed
-    ? `⚠ Could not open Outlook automatically (${escHtml(j.outlookError)}) — draft downloaded instead`
-    : '📧 Email draft downloaded';
-  out.innerHTML = `
-    <div class="card mt-4" style="border-color: ${color};">
-      <div style="font-weight:600; color: ${color}; margin-bottom:6px;">${title}</div>
-      <div class="text-sm muted">Open the downloaded <strong>.eml</strong> file — it opens in Outlook as a new draft with the Excel attached. Review it and click <strong>Send</strong>.</div>
+function draftSummaryHtml(j) {
+  return `
       <div class="kv mt-2" style="display:grid; grid-template-columns:90px 1fr; gap:6px 12px; font-size:13px;">
         <b style="color:var(--muted); font-weight:500; font-size:12px;">To</b><span>${escHtml(j.to)}</span>
         <b style="color:var(--muted); font-weight:500; font-size:12px;">CC</b><span>${escHtml(j.cc || '(none)')}</span>
         <b style="color:var(--muted); font-weight:500; font-size:12px;">Subject</b><span>${escHtml(j.subject)}</span>
         <b style="color:var(--muted); font-weight:500; font-size:12px;">Orders</b><span>${j.count}</span>
-      </div>
+      </div>`;
+}
+
+function renderDraftDownload(out, j, what) {
+  // 1) Outlook helper installed on this PC → open the email straight in Outlook
+  if (j.draftToken && outlookHelperOn()) {
+    const link = outlookLink(j.draftToken);
+    out.innerHTML = `
+      <div class="card mt-4" style="border-color: var(--green);">
+        <div style="font-weight:600; color: var(--green); margin-bottom:6px;">📧 Opening the email in Outlook…</div>
+        <div class="text-sm muted">Review it in Outlook and click <strong>Send</strong>. Nothing opened? Click <strong>Open in Outlook</strong>.
+          The first time, your browser asks to open Windows PowerShell — tick <strong>Always allow</strong> and click <strong>Open</strong>.</div>
+        ${draftSummaryHtml(j)}
+        <div class="row mt-4" style="flex-wrap:wrap; gap:8px;">
+          <a class="btn btn-primary" href="${link}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>
+            Open in Outlook
+          </a>
+          <a class="btn btn-ghost" href="${j.emlUrl}" download>Download draft file instead</a>
+          <button class="btn btn-ghost" onclick="openOutlookSetup()">Outlook button settings</button>
+        </div>
+      </div>`;
+    window.location.href = link;
+    toast(`Opening the email in Outlook (${j.count} ${what})`, 'success');
+    return;
+  }
+
+  // 2) Fallback: download the .eml draft
+  const failed = !!j.outlookError;   // a real Outlook failure (local Windows run)
+  const color  = failed ? 'var(--amber)' : 'var(--green)';
+  const title  = failed
+    ? `⚠ Could not open Outlook automatically (${escHtml(j.outlookError)}) — draft downloaded instead`
+    : '📧 Email draft downloaded';
+  const tip = j.draftToken ? `
+      <div class="text-sm mt-4" style="padding:10px 12px; border:1px dashed var(--border); border-radius:10px;">
+        Prefer the email to open straight in Outlook, without downloading?
+        <a href="#" onclick="openOutlookSetup(); return false;" style="color:var(--accent-text); font-weight:600;">Set it up once on this PC →</a>
+      </div>` : '';
+  out.innerHTML = `
+    <div class="card mt-4" style="border-color: ${color};">
+      <div style="font-weight:600; color: ${color}; margin-bottom:6px;">${title}</div>
+      <div class="text-sm muted">Open the downloaded <strong>.eml</strong> file — it opens in Outlook as a new draft with the Excel attached. Review it and click <strong>Send</strong>.</div>
+      ${draftSummaryHtml(j)}
       <div class="row mt-4">
         <a class="btn btn-primary" href="${j.emlUrl}" download>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -589,6 +678,7 @@ function renderDraftDownload(out, j, what) {
         </a>
         <a class="btn btn-ghost" href="${j.attachmentUrl}" download>Download Excel only</a>
       </div>
+      ${tip}
     </div>`;
   triggerDownload(j.emlUrl);
   toast(`Email draft ready for ${j.count} ${what}`, 'success');

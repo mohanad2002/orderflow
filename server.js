@@ -1255,6 +1255,8 @@ Customer Service`;
       // downloads the .eml draft instead. That's expected, not an error.
       outlookError:  (outlookResult.ok || outlookResult.reason === 'not_windows') ? null : (outlookResult.reason || 'unknown'),
       deliveryMode:  outlookResult.ok ? 'outlook' : 'download',
+      // Lets the Outlook helper on the user's PC fetch this email (15 min)
+      draftToken:    outlookResult.ok ? null : createMailToken({ to, cc: ccStr, subject, body, attachmentPath, emlPath }),
       // Always return fallback links so frontend can offer them if Outlook didn't open
       emlUrl: '/drafts/' + path.basename(emlPath),
       attachmentUrl: '/drafts/' + path.basename(attachmentPath)
@@ -1704,6 +1706,8 @@ Finance`;
       // downloads the .eml draft instead. That's expected, not an error.
       outlookError:  (outlookResult.ok || outlookResult.reason === 'not_windows') ? null : (outlookResult.reason || 'unknown'),
       deliveryMode:  outlookResult.ok ? 'outlook' : 'download',
+      // Lets the Outlook helper on the user's PC fetch this email (15 min)
+      draftToken:    outlookResult.ok ? null : createMailToken({ to, cc: ccStr, subject, body, attachmentPath, emlPath }),
       emlUrl: '/drafts/' + path.basename(emlPath),
       attachmentUrl: '/drafts/' + path.basename(attachmentPath)
     });
@@ -1749,6 +1753,82 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
 // OUTLOOK .EML DRAFT BUILDER
 // X-Unsent: 1 makes Outlook open the file as a NEW DRAFT (not received mail)
 // ════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════════
+// OUTLOOK HELPER — open the email straight in Outlook on the user's PC
+// ════════════════════════════════════════════════════════════════════════
+// A website can't control desktop Outlook, so each PC installs a tiny
+// helper once (Orderflow-Outlook-Setup.cmd — no admin rights). It registers
+// the "orderflow-mail:" link type for that Windows user. When someone clicks
+// Notify Finance / Send Release Mail, the browser opens
+//   orderflow-mail://open/?url=<this app>/api/mail-draft/<short-lived token>
+// and the helper downloads that one email and creates it in Outlook through
+// Outlook automation (COM) — the same method the original local app used.
+const MAIL_TOKEN_TTL_MS   = 15 * 60 * 1000;
+const MAIL_TOKEN_MAX_USES = 5;
+const _mailTokens = new Map();   // token -> { to, cc, subject, body, attachmentPath, emlPath, expires, uses }
+
+function createMailToken(d) {
+  const now = Date.now();
+  for (const [t, e] of _mailTokens) if (e.expires < now) _mailTokens.delete(t);
+  const token = crypto.randomBytes(24).toString('hex');
+  _mailTokens.set(token, { ...d, expires: now + MAIL_TOKEN_TTL_MS, uses: 0 });
+  return token;
+}
+
+// Read by the helper on the user's PC (no browser cookie there — the
+// unguessable, short-lived token is the permission).
+app.get('/api/mail-draft/:token', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const token = String(req.params.token || '');
+  const e = _mailTokens.get(token);
+  if (!e || e.expires < Date.now() || e.uses >= MAIL_TOKEN_MAX_USES) {
+    _mailTokens.delete(token);
+    return res.status(404).json({ success: false, error: 'This email link has expired. Click the email button in Orderflow again.' });
+  }
+  e.uses++;
+  try {
+    res.json({
+      success: true,
+      to: e.to, cc: e.cc, subject: e.subject, body: e.body,
+      attachmentName:   path.basename(e.attachmentPath),
+      attachmentBase64: fs.readFileSync(e.attachmentPath).toString('base64'),
+      emlName:          path.basename(e.emlPath),
+      emlBase64:        fs.readFileSync(e.emlPath).toString('base64')
+    });
+  } catch (err) {
+    res.status(404).json({ success: false, error: 'This email link has expired. Click the email button in Orderflow again.' });
+  }
+});
+
+// The helper only accepts links from the app address it was installed from.
+function appOrigin(req) {
+  const host = String(req.get('host') || '');
+  if (!/^[A-Za-z0-9.-]+(:\d{1,5})?$/.test(host)) return null;
+  return `${req.protocol}://${host}`;
+}
+function outlookHelperScript(origin) {
+  return fs.readFileSync(path.join(__dirname, 'outlook-helper', 'OrderflowOutlook.ps1'), 'utf8')
+    .replace('__ORIGIN__', origin)
+    .replace(/\r?\n/g, '\r\n');
+}
+
+// One-time setup file: double-click on the PC (no admin rights needed).
+app.get('/outlook-helper/Orderflow-Outlook-Setup.cmd', (req, res) => {
+  const origin = appOrigin(req);
+  if (!origin) return res.status(400).type('text').send('Bad host');
+  const header = fs.readFileSync(path.join(__dirname, 'outlook-helper', 'setup-header.cmd'), 'utf8').replace(/\r?\n/g, '\r\n');
+  res.setHeader('Content-Type', 'application/octet-stream');
+  res.setHeader('Content-Disposition', 'attachment; filename="Orderflow-Outlook-Setup.cmd"');
+  res.send(header + '#__HELPER__\r\n' + outlookHelperScript(origin));
+});
+
+// Same helper as a plain script (used by the copy-paste PowerShell setup).
+app.get('/outlook-helper/OrderflowOutlook.ps1', (req, res) => {
+  const origin = appOrigin(req);
+  if (!origin) return res.status(400).type('text').send('Bad host');
+  res.type('text/plain').send(outlookHelperScript(origin));
+});
+
 // Drafts are only needed for a short while after they're generated.
 function cleanupDrafts(maxAgeMs = 24 * 60 * 60 * 1000) {
   try {

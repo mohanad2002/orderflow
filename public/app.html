@@ -431,6 +431,10 @@
             Import Excel
           </button>
           <input type="file" id="order-file" accept=".xlsx,.xls" hidden onchange="importOrders(this.files[0])">
+          <button class="btn btn-ghost ol-status-btn" onclick="openOutlookSetup()" title="Open emails straight in Outlook">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>
+            <span class="ol-status-text">Outlook: off</span>
+          </button>
           <button class="btn btn-primary" onclick="notifyFinance()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
             Notify Finance
@@ -495,6 +499,10 @@
           <div class="page-sub">Release allowed only if Order Amount ≤ Remaining Balance. Mailed &amp; released orders are hidden by default.</div>
         </div>
         <div class="row" style="gap:8px;">
+          <button class="btn btn-ghost ol-status-btn" onclick="openOutlookSetup()" title="Open emails straight in Outlook">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>
+            <span class="ol-status-text">Outlook: off</span>
+          </button>
           <button class="btn btn-primary" onclick="financeMail()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
             Send Release Mail
@@ -649,6 +657,41 @@
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="document.getElementById('pw-modal').classList.remove('open')">Cancel</button>
       <button class="btn btn-primary" onclick="submitPassword()">Update</button>
+    </div>
+  </div>
+</div>
+
+<!-- Outlook helper setup modal -->
+<div class="modal-backdrop" id="ol-modal">
+  <div class="modal">
+    <div class="modal-title">Open emails straight in Outlook</div>
+    <div class="text-sm muted" style="line-height:1.6;">
+      Set this up once on each PC (no admin rights needed). After that, <b>Notify Finance</b> and <b>Send Release Mail</b>
+      open a new Outlook email with To, CC, subject, text and the Excel already attached, and nothing is saved to Downloads.
+      Works with classic Outlook for Windows.
+    </div>
+    <ol class="ol-steps">
+      <li>
+        <a class="btn btn-primary btn-sm" href="/outlook-helper/Orderflow-Outlook-Setup.cmd" download>Download setup file</a>
+      </li>
+      <li>Open the downloaded <b>Orderflow-Outlook-Setup.cmd</b>. If the browser asks, choose <b>Keep</b>. If Windows shows
+        "Windows protected your PC", click <b>More info → Run anyway</b>. Wait for <b>"Done"</b>, then close the window.</li>
+      <li>Click <b>I've installed it</b> below.</li>
+    </ol>
+    <div class="text-sm muted" style="line-height:1.6;">
+      The first time you send an email, the browser asks whether to open <b>Windows PowerShell</b>.
+      Tick <b>Always allow</b> and click <b>Open</b>.
+    </div>
+    <details class="ol-alt">
+      <summary>Can't run the setup file? Use PowerShell instead</summary>
+      <div class="text-sm muted" style="margin:8px 0;">Open <b>Windows PowerShell</b> from the Start menu, paste this, and press Enter:</div>
+      <textarea id="ol-snippet" readonly rows="5" style="width:100%; font-family:var(--mono); font-size:11px;"></textarea>
+      <button class="btn btn-ghost btn-sm" style="margin-top:6px;" onclick="copyOutlookSnippet()">Copy</button>
+    </details>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="ol-off-btn" onclick="setOutlookHelper(false)">Turn off on this PC</button>
+      <button class="btn btn-ghost" onclick="document.getElementById('ol-modal').classList.remove('open')">Cancel</button>
+      <button class="btn btn-primary" onclick="setOutlookHelper(true)">I've installed it</button>
     </div>
   </div>
 </div>

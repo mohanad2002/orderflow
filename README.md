@@ -56,7 +56,11 @@ The upload page only works while the database is completely empty, so once your 
 
 **Passwords.** On the hosted app, the factory passwords (`cs123`, `fin123`) never work. On first start, any account still using one is switched to `CS_PASSWORD` / `FINANCE_PASSWORD`. Passwords users have changed in the app (lock icon) are left alone.
 
-**Emails.** A cloud server can't open Outlook on your PC. **Notify Finance** and **Send Release Mail** therefore download an `.eml` draft; open it and Outlook (classic) shows the message with To, CC, subject, body and Excel attachment ready. Review it and click **Send**.
+**Emails (Notify Finance / Send Release Mail).** A website can't control Outlook on your PC by itself, so there are two ways:
+- **Outlook button (recommended).** Set it up once on each PC by clicking **Outlook: off** next to the email button and following the 3 steps. No admin rights are needed. After that, clicking the email button opens a **new Outlook email** with To, CC, subject, text and the Excel already attached. Nothing is saved to Downloads. Review it and click **Send**. The first time, the browser asks to open *Windows PowerShell*: tick **Always allow** and click **Open**. This needs classic Outlook for Windows.
+- **Without the Outlook button,** the app downloads an `.eml` draft instead. Open it and Outlook shows the same ready-to-send email.
+
+How the Outlook button works: setup saves a small script to `%LOCALAPPDATA%\Orderflow` and registers the `orderflow-mail:` link type for your Windows user only. When you click the email button, the browser hands that link to the script. The script fetches that one email from the app (the link expires after 15 minutes) and creates it in Outlook, the same way the original local app did. The script only accepts links from your own app address. To remove it, delete `%LOCALAPPDATA%\Orderflow` and the registry key `HKEY_CURRENT_USER\Software\Classes\orderflow-mail`.
 
 **Free-plan sleep.** The app sleeps after 15 minutes with no visitors, and the next visit takes about a minute to wake it. To keep it awake, create a free monitor at <https://cron-job.org> or <https://uptimerobot.com> that opens `https://YOUR-APP.onrender.com/healthz` every 10 minutes. 750 free hours a month covers one service running 24/7.
 
@@ -106,6 +110,7 @@ When run locally on Windows, the email buttons still try to open Outlook directl
 ├─ .env.example       ← settings template (copy to .env for local runs)
 ├─ package.json
 ├─ start.bat          ← Windows launcher (local)
+├─ outlook-helper/    ← "Outlook button" helper (setup file + script for each PC)
 └─ public/
    ├─ index.html      ← login page
    ├─ setup.html      ← first-time data upload page

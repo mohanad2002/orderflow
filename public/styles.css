@@ -339,3 +339,10 @@ html:not([data-theme="light"]) .theme-switch .switch-track .track-moon { opacity
 .mt-2 { margin-top: 8px; } .mt-4 { margin-top: 16px; } .mt-6 { margin-top: 24px; }
 .muted { color: var(--muted); }
 .text-sm { font-size: 12.5px; }
+
+/* ── Outlook helper ─────────────────────────────────────────────────────── */
+.ol-steps { margin: 16px 0 16px 20px; display:flex; flex-direction:column; gap:10px; font-size:13.5px; line-height:1.55; }
+.ol-alt { margin-top: 14px; font-size: 13px; }
+.ol-alt summary { cursor:pointer; color: var(--muted); }
+.ol-alt textarea { background: var(--surface-2); color: var(--text); border:1px solid var(--border); border-radius:8px; padding:8px; resize:vertical; }
+.ol-status-btn.on { color: var(--green); border-color: var(--green); }

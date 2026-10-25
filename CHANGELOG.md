@@ -4,6 +4,12 @@ Build version is shown in the top-left of the app (next to "Order Management"). 
 
 ---
 
+## v3.1.0  (Emails open straight in Outlook)
+- **Outlook button:** with a one-time setup on each PC (no admin rights), **Notify Finance** and **Send Release Mail** create a new email directly in Outlook, with To, CC, subject, text and the Excel attached. Nothing is downloaded. This is the same Outlook automation the original local app used, now run on each user's own PC.
+- Setup: click **Outlook: off/on** next to the email button, then download and run `Orderflow-Outlook-Setup.cmd`, or paste the PowerShell alternative. It registers the `orderflow-mail:` link type for the current Windows user only.
+- The app gives the helper a short-lived link (15 minutes, up to 5 opens) to fetch that one email. The helper only accepts links from the app address it was installed from.
+- Without the Outlook button, the `.eml` draft download works as before, now with a tip to set the button up.
+
 ## v3.0.0  (Database moved off Nextcloud → Turso)
 - **New database:** data now lives in a hosted SQLite database on [Turso](https://turso.tech) (free plan). Nextcloud is no longer used.
 - **First-time setup page:** while the Turso database is empty, opening the app shows an **Upload your data** page. Upload your local `Order_App.db` with the setup key (`FINANCE_PASSWORD` or `CS_PASSWORD`), and every table, row and index is copied in one transaction and verified. Wrong files, wrong keys and non-Orderflow databases are refused, and nothing is saved on failure. The page locks itself once data exists.
